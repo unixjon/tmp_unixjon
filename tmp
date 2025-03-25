@@ -1,1 +1,34 @@
-git clone https://unixjon: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@github.com/unixjon/smx-docs.git
+sudo apt-get install apt-transport-https ca-certificates curl software-properties-common
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu noble stable"
+sudo apt-get update
+sudo apt-get install docker-ce
+docker --version
+sudo systemctl start docker
+sudo systemctl enable docker
+
+
+# k8s
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+cat <<EOF >/etc/apt/sources.list.d/kubernetes.list
+deb http://apt.kubernetes.io/ kubernetes-xenial main
+EOF
+apt-get update
+apt-get install -y kubelet kubeadm kubectl
+apt-get install keepalived
+systemctl enable keepalived && systemctl start keepalived
+sysctl net.bridge.bridge-nf-call-iptables=1
+vim /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+# change it: Environment=”cgroup-driver=systemd/cgroup-driver=cgroupfs”
+
+#master
+kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=172.16.0.26
+
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+curl -O https://www.nakivo.com/res/files/blog-info/kube-flannel.yml
+kubectl apply -f ./kube-flannel.yml
+kubectl get nodes
+kubectl get pods --all-namespaces
