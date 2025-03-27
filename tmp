@@ -2,24 +2,39 @@ sudo apt-get install apt-transport-https ca-certificates curl software-propertie
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
 sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu noble stable"
 sudo apt-get update
-sudo apt-get install docker-ce
+sudo apt install docker.io -y
+sudo apt install containerd
 docker --version
 sudo systemctl start docker
 sudo systemctl enable docker
 
 
 # k8s
-curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-cat <<EOF >/etc/apt/sources.list.d/kubernetes.list
-deb http://apt.kubernetes.io/ kubernetes-xenial main
+sudo modprobe overlay
+sudo modprobe br_netfilter
+sudo tee /etc/modules-load.d/k8s.conf <<EOF
+overlay
+br_netfilter
 EOF
-apt-get update
-apt-get install -y kubelet kubeadm kubectl
-apt-get install keepalived
+vim /etc/sysctl.d/k8s.conf
+#net.bridge.bridge-nf-call-iptables  = 1
+#net.bridge.bridge-nf-call-ip6tables = 1
+#net.ipv4.ip_forward   = 1
+sudo mkdir /etc/containerd
+sudo sh -c "containerd config default > /etc/containerd/config.toml"
+sudo sed -i 's/ SystemdCgroup = false/ SystemdCgroup = true/' /etc/containerd/config.toml
+sudo systemctl restart containerd.service
+
+sysctl --system
+sudo apt-get install curl ca-certificates apt-transport-https  -y
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt update
+sudo apt install kubelet kubeadm kubectl -y
+
+apt install keepalived
 systemctl enable keepalived && systemctl start keepalived
-sysctl net.bridge.bridge-nf-call-iptables=1
-vim /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
-# change it: Environment=”cgroup-driver=systemd/cgroup-driver=cgroupfs”
+
 
 #master
 kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=172.16.0.26
@@ -28,7 +43,11 @@ mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-curl -O https://www.nakivo.com/res/files/blog-info/kube-flannel.yml
-kubectl apply -f ./kube-flannel.yml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml -O
+sed -i 's/cidr: 192\.168\.0\.0\/16/cidr: 10.244.0.0\/16/g' custom-resources.yaml
+kubectl create -f custom-resources.yaml
+
+
 kubectl get nodes
 kubectl get pods --all-namespaces
